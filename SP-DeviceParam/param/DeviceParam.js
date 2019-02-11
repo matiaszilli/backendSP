@@ -1,26 +1,12 @@
-class DeviceData {
+class DeviceParam {
     constructor(db) {
         this.db = db;
     }
     insert(data, callback) {
-        let params;
-        let dataToInsert = data.data;
-        dataToInsert.topic = data.topic; // insert topic
-        dataToInsert.timestamp = data.timestamp; // insert timestamp
-        switch (data.type) {
-            case 'data':
-                params = {
-                    TableName: process.env.DYNAMODB_TABLE,
-                    Item: dataToInsert
-                };
-                break;
-            case 'info':
-                params = {
-                    TableName: process.env.DYNAMODB_TABLE_INFO,
-                    Item: dataToInsert
-                };
-                break;
-        }
+        const params = {
+            TableName: process.env.DYNAMODB_TABLE,
+            Item: data
+        };
         // write to the database
         this.db.put(params, (error, result) => {
             // handle potential errors
@@ -37,15 +23,14 @@ class DeviceData {
             callback(null, response);
         });
     }
-    get(topic, quantity, callback) {
+    get(topic, param, callback) {
         const params = {
             TableName: process.env.DYNAMODB_TABLE,
-            Limit: quantity,
-            KeyConditionExpression: "topic = :topic",
+            KeyConditionExpression: "topic = :topic and param = :param",
             ExpressionAttributeValues: {
-                ":topic": topic
+                ":topic": topic,
+                ":param": param
             },
-            ScanIndexForward: false
         };
         // get items from the database
         this.db.query(params, (error, result) => {
@@ -56,9 +41,6 @@ class DeviceData {
             }
             else {
                 console.log("Query succeeded.");
-                result.Items.forEach(function (item) {
-                    console.log(" -", item.year + ": " + item.title);
-                });
                 // create a response
                 const response = {
                     statusCode: 200,
@@ -73,4 +55,4 @@ class DeviceData {
         });
     }
 }
-module.exports = DeviceData;
+module.exports = DeviceParam;

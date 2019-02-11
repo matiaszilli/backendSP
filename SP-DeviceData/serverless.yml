@@ -1,5 +1,18 @@
 service: SP-DeviceData
 
+package:
+  #excludeDevDependencies: false
+  exclude:
+    - node_modules/**
+    - '!node_modules/aws-sdk/**'
+    - data/tests/**
+    - data/**.ts
+    - coverage/**
+    - .circleci/**
+
+plugins:
+  #- serverless-localstack
+    
 provider:
   name: aws
   runtime: nodejs8.10
@@ -9,9 +22,17 @@ provider:
   memorySize: 128
   timeout: 6
   custom:
+    IS_OFFLINE: false # to enable offline serverless plugin
     folderName: data
+    localstack: # enable localstack
+      host: http://localhost
+      endpointFile: path/to/file.json
+    stages:
+      - local
+      - dev
   environment:
     DYNAMODB_TABLE: SPDeviceData  # ${self:service}-${opt:stage, self:provider.stage}
+    DYNAMODB_TABLE_INFO: SPDeviceInfo  # ${self:service}-${opt:stage, self:provider.stage}
   iamRoleStatements:
     - Effect: Allow
       Action:
@@ -22,6 +43,15 @@ provider:
         - dynamodb:UpdateItem
         - dynamodb:DeleteItem
       Resource: "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.DYNAMODB_TABLE}"
+    - Effect: Allow
+      Action:
+        - dynamodb:Query
+        - dynamodb:Scan
+        - dynamodb:GetItem
+        - dynamodb:PutItem
+        - dynamodb:UpdateItem
+        - dynamodb:DeleteItem
+      Resource: "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.DYNAMODB_TABLE_INFO}"
 
 functions:
   get:
@@ -33,18 +63,18 @@ functions:
           path: device/data/get
           method: get
           cors: true
+          request:
+            parameters:
+              querystrings:
+                topic: true # required
+                quantity: false # optional
   insert:
     handler: ${self:provider.custom.folderName}/insert.insert
     name: ${self:provider.stage}-DeviceDataToDynamo
     description: Insert data to Dynamo
     events:
       - iot:
-        sql: " SELECT * FROM '#'"
-        description: "Insert published device data to Dynamo"
-      - http:
-          path: device/data/insert
-          method: post
-          cors: true
+          sql: "SELECT *, topic() AS topic FROM '#'"
 
 resources:
   Resources:
@@ -70,3 +100,25 @@ resources:
           ReadCapacityUnits: 1
           WriteCapacityUnits: 1
         TableName: ${self:provider.environment.DYNAMODB_TABLE}
+    SPDeviceInfo:
+      Type: 'AWS::DynamoDB::Table'
+      DeletionPolicy: Retain
+      Properties:
+        AttributeDefinitions:
+          -
+            AttributeName: topic
+            AttributeType: S
+          -
+            AttributeName: timestamp
+            AttributeType: S
+        KeySchema:
+          -
+            AttributeName: topic
+            KeyType: HASH
+          -
+            AttributeName: timestamp
+            KeyType: RANGE
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+        TableName: ${self:provider.environment.DYNAMODB_TABLE_INFO}
